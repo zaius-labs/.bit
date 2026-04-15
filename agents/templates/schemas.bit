@@ -1,0 +1,43 @@
+# bit plugin v0.3 — Entity Schemas
+
+define:@Rule
+    text: ""!
+    enforced: true?
+    scope: :global/:directory/:file!
+    pattern: ""
+    action: :block/:warn/:log!
+
+define:@Memory
+    text: ""!
+    type: :user/:feedback/:project/:reference!
+    created: ""@
+    ttl: 0#
+    tags: []
+
+define:@Task
+    text: ""!
+    status: :pending/:in_progress/:done/:blocked!
+    priority: 0#
+    assigned: ""
+    blocks: ->@Task
+    blocked_by: ->@Task
+    created: ""@
+    completed: ""@
+    tags: []
+
+define:@Sprint
+    name: ""!
+    goal: ""
+    status: :planning/:active/:review/:done!
+
+define:@Convention
+    name: ""!
+    description: ""!
+    example: ""
+
+define:@Component
+    name: ""!
+    path: ""!
+    language: ""!
+    description: ""
+    depends_on: ->@Component

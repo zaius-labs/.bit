@@ -1,0 +1,9 @@
+---
+source: crates/bit-nl-core/tests/integration.rs
+assertion_line: 641
+expression: result.bit_source
+---
+define:@User
+    name: unknown
+    email: unknown
+    role: unknown

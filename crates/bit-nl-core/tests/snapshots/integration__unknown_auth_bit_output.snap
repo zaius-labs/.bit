@@ -1,0 +1,7 @@
+---
+source: crates/bit-nl-core/tests/integration.rs
+assertion_line: 655
+expression: result.bit_source
+---
+// confidence: 70%
+[!] make auth work somehow

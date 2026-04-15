@@ -1,0 +1,17 @@
+# Canopy Experience Schemas
+
+define:@TaskExperience
+    id: ""!
+    task_id: ""!
+    confidence: :candidate/:established/:proven/:discarded!
+    sessions_confirmed: 0#
+    sessions_total: 0#
+    avg_turns_fast: 0#
+    avg_turns_slow: 0#
+
+define:@WorkspaceKnowledge
+    id: ""!
+    workspace_hash: ""!
+    confidence: :candidate/:established/:proven!
+    observations: 0#
+    last_seen: ""@

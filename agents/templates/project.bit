@@ -1,0 +1,14 @@
+# Project
+
+define:@Rule
+    text: ""!
+    enforced: true?
+
+define:@Convention
+    name: ""!
+    description: ""!
+
+# Add your project rules below
+# mutate:@Rule:example
+#     text: Always run tests before committing
+#     enforced: true

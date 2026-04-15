@@ -1,0 +1,17 @@
+# Memory
+
+define:@Memory
+    text: ""!
+    type: :user/:feedback/:project/:reference!
+    created: ""@
+    ttl: 0#
+
+# Memories are entities with optional TTL (time-to-live in seconds).
+# Type :user for preferences, :feedback for corrections,
+# :project for project context, :reference for external links.
+#
+# Example:
+# mutate:@Memory:voice
+#     text: User prefers blunt, simple writing with no metaphors
+#     type: :feedback
+#     created: 2026-04-11

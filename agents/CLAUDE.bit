@@ -1,0 +1,92 @@
+# Project Configuration
+
+define:@Rule
+    text: ""!
+    enforced: true?
+    scope: :global/:directory/:file!
+    pattern: ""
+    action: :block/:warn/:log!
+
+define:@Convention
+    name: ""!
+    description: ""!
+    example: ""
+
+define:@Component
+    name: ""!
+    path: ""!
+    language: ""!
+    description: ""
+    depends_on: ->@Component
+
+# Rules
+
+mutate:@Rule:branch
+    text: Always work on dev branch
+    enforced: true
+    scope: global
+    pattern: "checkout.*main|checkout.*master|push.*main|push.*master"
+    action: block
+
+mutate:@Rule:no-docs-dir
+    text: Never create docs/ or plans/ directories
+    enforced: true
+    scope: global
+    pattern: "docs/|plans/"
+    action: block
+
+mutate:@Rule:env-files
+    text: API keys live in .env.local — check there, never ask
+    enforced: true
+    scope: global
+    pattern: "\\.env$"
+    action: block
+
+mutate:@Rule:no-force-push
+    text: Never force push
+    enforced: true
+    scope: global
+    pattern: "push.*--force|push.*-f"
+    action: block
+
+# Conventions
+
+mutate:@Convention:testing
+    name: TDD
+    description: Write tests before implementation
+    example: Write failing test → implement → verify → commit
+
+mutate:@Convention:commits
+    name: Conventional commits
+    description: Use feat/fix/refactor/test/docs prefixes
+
+# Architecture
+
+mutate:@Component:parser
+    name: bit-lang-core
+    path: crates/bit-core/
+    language: Rust
+    description: Parser, IR, interpreter, renderer, validator
+
+mutate:@Component:store
+    name: bit-lang-store
+    path: crates/bit-store/
+    language: Rust
+    description: Page-based database engine with B-tree indexes
+    depends_on: ->@Component:parser
+
+mutate:@Component:cli
+    name: bit-lang-cli
+    path: crates/bit-cli/
+    language: Rust
+    description: CLI binary with 21 commands
+    depends_on: ->@Component:store
+
+# Active Tasks
+
+[x] Extract .bit from Zaius monorepo
+[x] Build page-based database engine
+[x] Add intelligence features (schema inference, drift, etc.)
+[o] Build Claude Code plugin
+[!] Implement ML feature flags (embeddings, anomaly detection)
+[!] Publish v0.2.0 with all features

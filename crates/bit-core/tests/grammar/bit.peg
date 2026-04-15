@@ -1,0 +1,761 @@
+// bit.peg — Formal PEG grammar for the Bit language
+//
+// Derived from: packages/server/native/zaius_nif/src/parse.rs
+// Authoritative parser: parse.rs (Rust, hand-written recursive descent)
+//
+// This grammar is the *specification*. parse.rs is the *authority*.
+// Any divergence between them is a spec bug, not a parser bug.
+//
+// XGrammar notes:
+//   STRUCTURAL ZONE  — positions covered by a grammar production rule.
+//                      The constraint mask applies here. These are context-
+//                      independent: each construct keyword appears only at
+//                      line-start after optional leading spaces, so the valid
+//                      next-token set is fixed without reading prior context.
+//   CONTENT ZONE     — the payload after the structural keyword and all
+//                      indented body lines that follow. Constraint is relaxed
+//                      at content positions (unconstrained diffusion step).
+//
+// Syntax: pest PEG grammar (https://pest.rs)
+// Indentation: Bit uses 4-space quanta; tabs are normalised to 4 spaces.
+//   PEG cannot express indent-sensitive scoping natively; indentation rules
+//   are documented as prose annotations (INDENT / BODY) and enforced by
+//   the conformance test driver, not by grammar recognition alone.
+//   XGrammar structural-token extraction is unaffected: all structural tokens
+//   appear at column 0 after optional leading spaces.
+//
+// Coverage: 52 node types  (Node enum, types.rs)
+//           + 10 inline span types
+//           + 8 field/sub-production types
+//           = 70 labelled productions
+//
+// Node enum  → grammar rule mapping
+//   Group              → group
+//   Task               → task
+//   Prose              → prose
+//   Comment            → comment_line
+//   Spawn              → spawn_parallel | spawn_sequential
+//   Divider            → divider
+//   Define             → define
+//   Mutate             → mutate
+//   Delete             → delete
+//   Query              → query_block | inline_query
+//   Variable           → variable
+//   Flow               → flow
+//   States             → states
+//   Validate           → validate
+//   Check              → check
+//   Form               → form
+//   ModDef             → mod_def
+//   ModInvoke          → mod_invoke | mod_direct
+//   Git                → git
+//   Conditional        → conditional
+//   Snap               → snap
+//   Diff               → diff
+//   History            → history
+//   StatusDef          → status_def
+//   Routine            → routine
+//   Bold               → bold_line
+//   Webhook            → webhook
+//   UseBlock           → use_block
+//   Remember           → remember
+//   Recall             → recall
+//   EmbedMarker        → embed_marker
+//   FilesDef           → files_def
+//   PolicyDef          → policy_def
+//   Escalate           → escalate
+//   SyncDef            → sync_def | sync_section
+//   EntityDef          → entity_heading
+//   MetricDef          → metric_heading
+//   GateDef            → gate_def
+//   LatticeValidates   → lattice_validates | lattice_validates_kw
+//   LatticeConstraint  → lattice_constraint | lattice_constraint_kw
+//   LatticeSchema      → lattice_schema | lattice_schema_kw
+//   LatticeFrontier    → lattice_frontier | lattice_frontier_kw
+//   PressureEffect     → pressure_effect | pressure_effect_kw
+//   UnitCell           → unit_cell | unit_cell_kw
+//   Symmetry           → symmetry | symmetry_kw
+//   CodeBlock          → code_block
+//   Serve              → serve
+//   Issue              → issue
+//   ThreadComment      → thread_comment
+//   Commands           → commands
+//   Project            → project
+//   ProjectScope       → project_scope
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Primitives
+// ─────────────────────────────────────────────────────────────────────────────
+
+// WHITESPACE is implicitly consumed between tokens in pest silent rules (_{ }).
+// In .bit, leading indent is meaningful so we do NOT use automatic WHITESPACE.
+
+NEWLINE     = _{ "\r\n" | "\n" }
+SP          = _{ " " }
+INDENT      = _{ SP{4} }                         // one indentation quantum
+INDENT_ANY  = _{ SP* }                           // 0-N leading spaces
+COMMENT_KW  = _{ "//" }
+REST        = { (!NEWLINE ~ ANY)* }              // remainder of line [CONTENT]
+CONTENT     = { (!(NEWLINE ~ NEWLINE) ~ ANY)* }  // multi-line content [CONTENT]
+
+// Identifier patterns
+UPPER       = _{ 'A'..'Z' }
+LOWER       = _{ 'a'..'z' }
+DIGIT       = _{ '0'..'9' }
+ALNUM       = _{ UPPER | LOWER | DIGIT }
+IDENT_CHAR  = _{ ALNUM | "_" | "-" }
+IDENT       = { ALNUM ~ IDENT_CHAR* }
+UPPER_IDENT = { UPPER ~ IDENT_CHAR* }            // entity / mod names start uppercase
+LOWER_IDENT = { LOWER ~ IDENT_CHAR* }            // keywords, field names
+
+// Scope qualifiers
+MOD_SCOPE   = { "$" ~ UPPER_IDENT ~ "." }        // $Mod.
+WS_SCOPE    = { "@workspace:" ~ LOWER_IDENT ~ "." }  // @workspace:name.
+ENTITY_REF  = { "@" ~ UPPER_IDENT ~ (":" ~ REST)? } // @Entity or @Entity:id
+SCOPED_ENTITY = { (MOD_SCOPE | WS_SCOPE)? ~ ENTITY_REF }
+
+// Gate: {gate_name optional_body}
+gate        = { "{" ~ IDENT ~ (" " ~ REST)? ~ "}" }
+gates       = { gate+ }
+
+// Atom: :name or :name:value (metadata tags on group/entity names)
+atom        = { ":" ~ LOWER_IDENT ~ (":" ~ IDENT)? }
+
+// Inline comment (stripped before structural parse)
+inline_comment = _{ SP* ~ COMMENT_KW ~ REST }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Document root
+// ─────────────────────────────────────────────────────────────────────────────
+
+document = { SOI ~ node* ~ EOI }
+
+// Each node is one logical construct (possibly spanning multiple indented lines).
+// Ordering follows parse.rs parse_line dispatch priority exactly.
+node = {
+    INDENT_ANY ~ (
+        code_block
+        | comment_line
+        | divider
+        | spawn_sequential
+        | spawn_parallel
+        | entity_heading
+        | metric_heading
+        | group
+        | define
+        | mutate
+        | delete
+        | query_block
+        | inline_query
+        | flow
+        | states
+        | validate
+        | check
+        | form
+        | mod_def
+        | mod_direct
+        | mod_invoke
+        | project
+        | commands
+        | serve
+        | sync_def
+        | git
+        | snap
+        | diff
+        | history
+        | status_def
+        | conditional
+        | bold_line
+        | webhook
+        | remember
+        | recall
+        | embed_marker
+        | files_def
+        | policy_def
+        | gate_def
+        | escalate
+        | use_block
+        | project_scope
+        | issue
+        | thread_comment
+        | lattice_validates_kw
+        | lattice_constraint_kw
+        | lattice_schema_kw
+        | lattice_frontier_kw
+        | pressure_effect_kw
+        | unit_cell_kw
+        | symmetry_kw
+        | task
+        | variable
+        | prose
+    ) ~ inline_comment? ~ NEWLINE?
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Code block  ← fenced with ```
+// ─────────────────────────────────────────────────────────────────────────────
+
+code_fence  = _{ "```" }
+code_lang   = { REST }                           // language tag after fence [CONTENT]
+code_body   = { (!(code_fence) ~ ANY)* }         // raw content [CONTENT]
+code_block  = { code_fence ~ code_lang ~ NEWLINE ~ code_body ~ code_fence ~ REST }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Comment line  ← starts with //
+// ─────────────────────────────────────────────────────────────────────────────
+
+comment_text = { REST }                          // [CONTENT]
+comment_line = { COMMENT_KW ~ comment_text }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Divider  ← --- or ----...
+// ─────────────────────────────────────────────────────────────────────────────
+
+divider = { "-"{3,} }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Spawn markers  ← + or ++
+// ─────────────────────────────────────────────────────────────────────────────
+
+spawn_sequential = { "++" ~ &(SP | NEWLINE | EOI) }  // must be standalone
+spawn_parallel   = { "+"  ~ &(SP | NEWLINE | EOI) }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Entity / Metric section headings (## Entity: Name)
+// These canonicalise to EntityDef / MetricDef in the AST.
+// ─────────────────────────────────────────────────────────────────────────────
+
+entity_name    = { REST }                        // [CONTENT] — entity name after colon
+entity_heading = { "## Entity" ~ SP* ~ ":" ~ SP* ~ entity_name }
+
+metric_name    = { REST }                        // [CONTENT]
+metric_heading = { "## Metric" ~ SP* ~ ":" ~ SP* ~ metric_name }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Groups  ← # ## ### ... (but NOT #( or ## Entity: or ## Metric:)
+//
+//   group_header  — the # line itself
+//   group_body    — INDENT-guarded child nodes (see BODY note above)
+// ─────────────────────────────────────────────────────────────────────────────
+
+group_depth  = { "#"+ }                         // depth = count of #
+group_name   = { (!gate ~ !atom ~ !NEWLINE ~ ANY)+ } // text before atoms/gates [CONTENT]
+group_body   = { node* }                        // INDENT: children indented >group_indent
+group        = {
+    group_depth ~ SP+ ~ !("Entity" ~ SP* ~ ":") ~ !("Metric" ~ SP* ~ ":") ~
+    group_name ~ atom* ~ gates? ~ NEWLINE ~ group_body
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Define  ← define:@Entity or define:$Mod.@Entity
+//
+//   define_header  — the define: line
+//   field_def      — indented field definitions (INDENT body)
+// ─────────────────────────────────────────────────────────────────────────────
+
+field_name    = { LOWER_IDENT ~ ("(s)")? }      // fieldname or fieldname(s) for plural
+field_default = { REST }                        // [CONTENT] — default value expression
+field_def     = { INDENT_ANY ~ field_name ~ ":" ~ SP* ~ field_default ~ NEWLINE }
+define_from   = { " from " ~ ENTITY_REF }       // optional: from @BaseEntity
+define_body   = { field_def* }                  // INDENT block
+define        = {
+    "define:" ~ SCOPED_ENTITY ~ atom* ~ define_from? ~ NEWLINE ~ define_body
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Mutate  ← mutate:@Entity:id or mutate:@Entity (batch)
+// ─────────────────────────────────────────────────────────────────────────────
+
+mutate_id     = { ":" ~ REST }                  // :id or :batch-record-id [CONTENT]
+kv_line       = { INDENT_ANY ~ LOWER_IDENT ~ ":" ~ SP* ~ REST ~ NEWLINE }
+mutate_body   = { kv_line* }                    // INDENT block
+mutate        = {
+    "mutate:" ~ SCOPED_ENTITY ~ mutate_id? ~ gates? ~ NEWLINE ~ mutate_body
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Delete  ← delete:@Entity:id
+// ─────────────────────────────────────────────────────────────────────────────
+
+delete = { "delete:" ~ SCOPED_ENTITY ~ (":" ~ REST)? }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Query block  ← query:@Entity or query:@Entity(s) where ...
+//   Also: query:@Entity from snap:version (temporal scoping)
+// ─────────────────────────────────────────────────────────────────────────────
+
+query_entity    = { SCOPED_ENTITY ~ "(s)"? }
+query_where     = { " where " ~ REST }          // [CONTENT]
+query_snap      = { " from snap:" ~ IDENT }     // temporal scope
+query_modifiers = { kv_line* }                  // sort: / limit: / include: lines
+query_block     = {
+    "query:" ~ query_entity ~ query_snap? ~ query_where? ~ NEWLINE ~ query_modifiers
+}
+
+// [STRUCTURAL] Inline query  ← ? expr
+inline_query = { "? " ~ REST }                  // [CONTENT]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Flow  ← flow:\n  A --> B  (edges indented)
+// ─────────────────────────────────────────────────────────────────────────────
+
+flow_node_id  = { UPPER_IDENT | LOWER_IDENT }
+flow_node_set = { flow_node_id ~ ("," ~ SP* ~ flow_node_id)* }
+edge_modifier = { "--" ~ (!"-" ~ ANY)+ ~ "--" }  // --label-- or --timeout:T--
+flow_arrow    = { edge_modifier? ~ "+-->" | edge_modifier? ~ "-->" }
+flow_edge     = { INDENT_ANY ~ flow_node_set ~ SP* ~ flow_arrow ~ SP* ~ flow_node_set ~ REST? }
+flow_body     = { (flow_edge ~ NEWLINE)* }
+flow          = { "flow:" ~ NEWLINE ~ flow_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] States  ← states:\n  A --> B  (same edge syntax as flow)
+// ─────────────────────────────────────────────────────────────────────────────
+
+states = { "states:" ~ NEWLINE ~ flow_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Validate  ← validate <name>:\n  child nodes
+// ─────────────────────────────────────────────────────────────────────────────
+
+validate_name = { (!(":" | NEWLINE) ~ ANY)+ }   // [CONTENT]
+validate_body = { node* }                       // INDENT block
+validate      = { "validate " ~ validate_name ~ ":" ~ NEWLINE ~ validate_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Check  ← check:<name> (name is NOT @Entity)
+// ─────────────────────────────────────────────────────────────────────────────
+
+check_name = { !("@") ~ REST }                  // [CONTENT]
+check_body = { kv_line* }
+check      = { "check:" ~ check_name ~ NEWLINE ~ check_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Form  ← form:<name> (name does NOT start with "install")
+// ─────────────────────────────────────────────────────────────────────────────
+
+form_name   = { !("install") ~ REST }           // [CONTENT]
+form_body   = { kv_line* }
+form        = { "form:" ~ form_name ~ NEWLINE ~ form_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Mod definition  ← mod:$Name or mod:$Name :v (versioned)
+// ─────────────────────────────────────────────────────────────────────────────
+
+mod_name     = { UPPER_IDENT }
+mod_versioned = { SP* ~ ":v" }
+mod_body     = { kv_line* }                     // key-value body; description supports """
+mod_def      = { "mod:$" ~ mod_name ~ mod_versioned? ~ NEWLINE ~ mod_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Mod invocation via mod: prefix  ← mod:install <args>, mod:list, etc.
+// ─────────────────────────────────────────────────────────────────────────────
+
+mod_method = { LOWER_IDENT }                    // install, publish, update, remove, list, registry
+mod_invoke = { "mod:" ~ mod_method ~ (SP ~ REST)? }  // [CONTENT]
+
+// [STRUCTURAL] Mod direct invocation  ← $Name.method(args)
+mod_call_target = { UPPER_IDENT ~ "." ~ LOWER_IDENT }
+mod_call_args   = { "(" ~ REST ~ ")" }          // [CONTENT]
+mod_direct      = { "$" ~ mod_call_target ~ mod_call_args? }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Project definition  ← project:<name>
+// ─────────────────────────────────────────────────────────────────────────────
+
+project_name = { REST }                         // [CONTENT]
+project_body = { kv_line* }
+project      = { "project:" ~ project_name ~ NEWLINE ~ project_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Commands block  ← commands:\n  /name\n    description: ...
+// ─────────────────────────────────────────────────────────────────────────────
+
+command_name   = { LOWER_IDENT ~ ("-" ~ LOWER_IDENT)* }
+command_props  = { kv_line* }
+command_entry  = { INDENT_ANY ~ "/" ~ command_name ~ NEWLINE ~ command_props }
+commands_body  = { command_entry* }
+commands       = { "commands:" ~ (SP* ~ REST)? ~ NEWLINE ~ commands_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Serve  ← serve:target|command|
+// ─────────────────────────────────────────────────────────────────────────────
+
+serve_target  = { LOWER_IDENT }
+serve_command = { (!"|" ~ ANY)* }               // [CONTENT] — shell command
+serve_body    = { kv_line* }                    // port: / open: lines
+serve         = { "serve:" ~ serve_target ~ "|" ~ serve_command ~ "|"? ~ NEWLINE ~ serve_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Sync definition (direct keyword form)  ← sync:<name>
+//   Also: ## Sync\n  ## <name>\n    class: ... (section-header form, canonicalised)
+// ─────────────────────────────────────────────────────────────────────────────
+
+sync_name = { REST }                            // [CONTENT]
+sync_body = { kv_line* }                        // class, source, identity, mode, target, schedule, scope
+sync_def  = { "sync:" ~ sync_name ~ NEWLINE ~ sync_body }
+
+// Section-header form: ## Sync group containing ## <name> subgroups
+// Canonicalised to SyncDef nodes by canonicalize_sync_children.
+// Grammar production matches the outer group; SyncDef extraction is semantic.
+sync_section = { group }  // alias: a group named "Sync" at depth 2 → SyncDef
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Git  ← git:verb args
+// ─────────────────────────────────────────────────────────────────────────────
+
+git_verb = { LOWER_IDENT }
+git_args = { REST }                             // [CONTENT]
+git_body = { kv_line* }
+git      = { "git:" ~ git_verb ~ (SP ~ git_args)? ~ NEWLINE ~ git_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Snap  ← snap:name
+// ─────────────────────────────────────────────────────────────────────────────
+
+snap_name = { REST }                            // [CONTENT]
+snap      = { "snap:" ~ snap_name }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Diff  ← diff:target  or  diff:target from snap:version
+// ─────────────────────────────────────────────────────────────────────────────
+
+diff_target   = { (!(" from snap:") ~ !NEWLINE ~ ANY)* }  // [CONTENT]
+diff_snap_ref = { " from snap:" ~ IDENT }
+diff          = { "diff:" ~ diff_target ~ diff_snap_ref? }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] History  ← history:target  or  history:target limit:N
+// ─────────────────────────────────────────────────────────────────────────────
+
+history_target = { (!(" limit:") ~ !NEWLINE ~ ANY)* }  // [CONTENT]
+history_limit  = { " limit:" ~ DIGIT+ }
+history        = { "history:" ~ history_target ~ history_limit? }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Status definition  ← status:opt1/opt2/opt3
+// ─────────────────────────────────────────────────────────────────────────────
+
+status_option = { (!("/" | NEWLINE) ~ ANY)+ }   // [CONTENT]
+status_def    = { "status:" ~ status_option ~ ("/" ~ status_option)+ }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Conditional  ← if <expr>: or if |expr|: or if ||expr||:
+// ─────────────────────────────────────────────────────────────────────────────
+
+cond_live_expr   = { "||" ~ REST ~ "||" }       // live compute [CONTENT]
+cond_static_expr = { "|" ~ (!"|" ~ REST) ~ "|" } // static compute [CONTENT]
+cond_plain_expr  = { REST }                     // plain expression [CONTENT]
+cond_expr        = { cond_live_expr | cond_static_expr | cond_plain_expr }
+cond_body        = { node* }
+conditional      = { "if " ~ cond_expr ~ ":" ~ NEWLINE ~ cond_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Bold line  ← **text**  (standalone line, not inline)
+// ─────────────────────────────────────────────────────────────────────────────
+
+bold_content = { (!("**") ~ ANY)+ }             // [CONTENT]
+bold_line    = { "**" ~ bold_content ~ "**" }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Webhook  ← webhook:on:|event| url:"https://..." payload:"..."
+// ─────────────────────────────────────────────────────────────────────────────
+
+webhook_trigger = { SP* ~ "on:" ~ "|" ~ (!"|" ~ ANY)+ ~ "|" }  // [CONTENT]
+webhook_url     = { SP* ~ "url:" ~ REST }       // [CONTENT]
+webhook_payload = { SP* ~ "payload:" ~ REST }   // [CONTENT]
+webhook         = { "webhook:" ~ webhook_trigger ~ webhook_url ~ webhook_payload? }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Remember / Recall  ← memory constructs
+// ─────────────────────────────────────────────────────────────────────────────
+
+remember_content = { REST }                     // [CONTENT]
+remember         = { "remember:" ~ remember_content }
+
+recall_query = { REST }                         // [CONTENT]
+recall       = { "recall:" ~ recall_query }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Embed marker  ← ^tag_name
+// ─────────────────────────────────────────────────────────────────────────────
+
+embed_tag    = { IDENT }
+embed_marker = { "^" ~ embed_tag }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Files definition  ← files:\n  @path or path
+// ─────────────────────────────────────────────────────────────────────────────
+
+file_path  = { ("@")? ~ REST }                  // [CONTENT]
+files_body = { (INDENT_ANY ~ file_path ~ NEWLINE)* }
+files_def  = { "files:" ~ NEWLINE ~ files_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Policy definition  ← policy:\n  @Path: {gates}
+// ─────────────────────────────────────────────────────────────────────────────
+
+policy_path = { (!(":" | NEWLINE) ~ ANY)+ }     // [CONTENT]
+policy_rule = { INDENT_ANY ~ "@" ~ policy_path ~ (":" ~ SP* ~ gates)? ~ NEWLINE }
+policy_body = { policy_rule* }
+policy_def  = { "policy:" ~ NEWLINE ~ policy_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Gate definition  ← gate:name (not gate:name@entity)
+// ─────────────────────────────────────────────────────────────────────────────
+
+gate_def_name = { !("@") ~ REST }               // [CONTENT]
+gate_body     = { node* }
+gate_def      = { "gate:" ~ gate_def_name ~ NEWLINE ~ gate_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Escalate  ← escalate:target
+// ─────────────────────────────────────────────────────────────────────────────
+
+escalate_target = { REST }                      // [CONTENT]
+escalate        = { "escalate:" ~ escalate_target }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Use block  ← use $Mod or use @Entity from $Mod [as @Alias]
+// ─────────────────────────────────────────────────────────────────────────────
+
+use_mod_simple  = { "$" ~ UPPER_IDENT }
+use_entity      = { "@" ~ UPPER_IDENT }
+use_from_mod    = { "$" ~ UPPER_IDENT }
+use_from_ws     = { "@workspace:" ~ LOWER_IDENT }
+use_alias       = { " as @" ~ UPPER_IDENT }
+use_block       = {
+    "use " ~ (
+        use_entity ~ " from " ~ (use_from_mod | use_from_ws) ~ use_alias?
+        | use_mod_simple
+    ) ~ NEWLINE ~ (kv_line)*
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Project scope  ← %ProjectName  (scoping block)
+// ─────────────────────────────────────────────────────────────────────────────
+
+project_scope_name = { UPPER_IDENT ~ (!NEWLINE ~ ANY)* }  // [CONTENT]
+project_scope_body = { node* }                // INDENT block; terminated by --- or dedent
+project_scope      = { "%" ~ project_scope_name ~ NEWLINE ~ project_scope_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Issue  ← issue:<title>
+// ─────────────────────────────────────────────────────────────────────────────
+
+issue_title = { REST }                          // [CONTENT]
+issue_field = { INDENT_ANY ~ LOWER_IDENT ~ ":" ~ SP* ~ REST ~ NEWLINE }
+issue_body  = { (issue_field | node)* }
+issue       = { "issue:" ~ issue_title ~ gates? ~ NEWLINE ~ issue_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Thread comment  ← comment: (block form)
+// ─────────────────────────────────────────────────────────────────────────────
+
+comment_field = { INDENT_ANY ~ LOWER_IDENT ~ ":" ~ SP* ~ REST ~ NEWLINE }
+comment_body  = { (comment_field | node)* }
+thread_comment = { "comment:" ~ REST? ~ NEWLINE ~ comment_body }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Lattice constructs (direct keyword form, from parse_line)
+//   Also available via section-header form (## Validates, ## Constraint, etc.)
+//   which canonicalize to the same AST node types.
+// ─────────────────────────────────────────────────────────────────────────────
+
+lattice_body          = { kv_line* }            // key-value body
+
+lattice_validates_kw  = { "lattice_validates:" ~ REST? ~ NEWLINE ~ lattice_body }
+lattice_constraint_kw = { "lattice_constraint:" ~ REST? ~ NEWLINE ~ lattice_body }
+lattice_schema_kw     = { "lattice_schema:" ~ NEWLINE ~ lattice_body }
+lattice_frontier_kw   = { "lattice_frontier:" ~ NEWLINE ~ lattice_body }
+pressure_effect_kw    = { "pressure_effect:" ~ NEWLINE ~ lattice_body }
+unit_cell_kw          = { "unit_cell:" ~ NEWLINE ~ node* }
+symmetry_kw           = { "symmetry:" ~ NEWLINE ~ node* }
+
+// Section-header canonical forms (## Validates, etc.) — matched by `group`
+// and canonicalised to lattice node types by canonicalize_node.
+// No separate grammar rule needed: group covers them.
+// Documented here for completeness:
+//
+//   ## Validates    → LatticeValidates    (depth 2)
+//   ## Constraint   → LatticeConstraint   (depth 2)
+//   ## Schema       → LatticeSchema       (depth 2)
+//   ## Frontier     → LatticeFrontier     (depth 2)
+//   ## Pressure Effect → PressureEffect   (depth 2)
+//   ## Unit Cell    → UnitCell            (depth 2)
+//   ## Symmetry     → Symmetry            (depth 2)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Tasks  ← task markers with brackets
+//
+//   Prefix patterns (parse.rs parse_task_marker):
+//     [!]          required, no label
+//     [o]          optional, no label
+//     [x]          completed
+//     [ ]          open
+//     [N]          numbered (N = integer)
+//     [N!]         numbered required
+//     [No]         numbered optional
+//     [Label!]     labelled required
+//     [Label?]     labelled decision
+//     [Label]      labelled open
+//     +[...]       parallel prefix
+//     ++[...]      parallel subtask
+//     -[...]       subtask depth 1
+//     --[...]      subtask depth 2
+//     (etc. up to MAX_DEPTH=128)
+//
+//   Task children: further indented nodes + special fields:
+//     depends: <id>
+//     validate: <name>
+//     status: <value>
+//     on_pass: / on_fail: / case <pattern>:  (branch arms)
+//   Task text may contain inline spans.
+//   git:closes #N may appear in task text.
+// ─────────────────────────────────────────────────────────────────────────────
+
+task_prefix  = { "++" | "+" | "-"+ }            // [STRUCTURAL] prefix modifier
+task_inside  = { " " | "!" | "o" | "x" | "X"
+                 | (DIGIT+ ~ ("!" | "o")?)
+                 | (IDENT ~ ("!" | "o" | "?")?) }  // bracket content
+task_label   = { "[" ~ task_inside ~ "]" }      // [STRUCTURAL]
+task_gates   = { gates }
+task_text    = { REST }                         // [CONTENT]
+task_body    = { node* }                        // INDENT block
+task         = {
+    task_prefix? ~ task_label ~ SP? ~ task_gates? ~ SP? ~ task_text ~ NEWLINE ~ task_body
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STRUCTURAL] Variable  ← name = value
+//   Not triggered if line starts with any construct keyword.
+//   value may be: literal, |expr|, ||live_expr||, @EntityRef
+// ─────────────────────────────────────────────────────────────────────────────
+
+var_name         = { IDENT }
+var_live_compute = { "||" ~ REST ~ "||" }       // [CONTENT]
+var_compute      = { "|" ~ (!"|" ~ REST) ~ "|" }  // [CONTENT]
+var_ref          = { "@" ~ UPPER_IDENT ~ REST } // [CONTENT]
+var_literal      = { REST }                     // [CONTENT]
+var_value        = { var_live_compute | var_compute | var_ref | var_literal }
+variable         = { var_name ~ SP* ~ "=" ~ SP* ~ var_value }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [CONTENT] Prose (fallback)
+//   Any line that does not match a structural construct.
+//   May contain inline spans: @Ref, $Mod, #channel, |expr|, {gate},
+//   %Project, **bold**, or plain text.
+// ─────────────────────────────────────────────────────────────────────────────
+
+inline_ref        = { (MOD_SCOPE | ("@workspace:" ~ LOWER_IDENT ~ "."))? ~ "@" ~ IDENT_CHAR+ }
+inline_mod_call   = { "$" ~ UPPER_IDENT ~ ("." ~ LOWER_IDENT)? ~ ("(" ~ REST ~ ")")? }
+inline_channel    = { "#" ~ IDENT }
+inline_compute    = { "||" ~ (!"||" ~ ANY)+ ~ "||" | "|" ~ (!"|" ~ ANY)+ ~ "|" }
+inline_bold       = { "**" ~ (!("**") ~ ANY)+ ~ "**" }
+inline_project    = { "%" ~ UPPER_IDENT ~ IDENT_CHAR* }
+inline_time       = { ("@timebox:" | "@due:" | "@deadline:" | "@available:" | "@blackout:") ~ REST }
+inline_span       = { inline_time | inline_ref | inline_mod_call | inline_channel |
+                      inline_compute | inline_bold | inline_project | gate }
+prose_text        = { (inline_span | (!NEWLINE ~ ANY))+ }
+prose             = { prose_text }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Appendix A — Structural vs Content zone classification
+//
+// The following table lists every grammar rule and marks positions as:
+//   S  = structural (grammar constraint applied)
+//   C  = content (constraint relaxed / unconstrained zone for Direction A)
+//
+// Rule                  | Structural tokens              | Content positions
+// ─────────────────────────────────────────────────────────────────────────────
+// comment_line          | "//"                           | comment_text
+// divider               | "---"+ (entire line)           | (none)
+// spawn_parallel        | "+" (entire line)              | (none)
+// spawn_sequential      | "++" (entire line)             | (none)
+// entity_heading        | "## Entity:"                   | entity_name
+// metric_heading        | "## Metric:"                   | metric_name
+// group                 | "#"+ " "                       | group_name, group_body
+// define                | "define:", scoped entity ref   | field_def values
+// mutate                | "mutate:", scoped entity ref   | kv_line values
+// delete                | "delete:", scoped entity ref   | entity id
+// query_block           | "query:"                       | where clause, modifiers
+// inline_query          | "? "                           | expression
+// flow                  | "flow:"                        | edge bodies
+// states                | "states:"                      | edge bodies
+// validate              | "validate "                    | name, child nodes
+// check                 | "check:"                       | name, body
+// form                  | "form:"                        | name, body
+// mod_def               | "mod:$"                        | name, body kv values
+// mod_invoke            | "mod:" method_name             | args
+// mod_direct            | "$" UPPER "." method           | args
+// project               | "project:"                     | name, body kv values
+// commands              | "commands:"                    | command entries
+// serve                 | "serve:"                       | command, body
+// sync_def              | "sync:"                        | name, body
+// git                   | "git:"                         | verb, args, body
+// snap                  | "snap:"                        | name
+// diff                  | "diff:"                        | target, snap ref
+// history               | "history:"                     | target, limit
+// status_def            | "status:"                      | options (separated by /)
+// conditional           | "if ", ":"                     | expr, children
+// bold_line             | "**", "**"                     | bold_content
+// webhook               | "webhook:"                     | trigger, url, payload
+// remember              | "remember:"                    | content
+// recall                | "recall:"                      | query
+// embed_marker          | "^"                            | tag (structured identifier)
+// files_def             | "files:"                       | paths
+// policy_def            | "policy:"                      | paths, gate names
+// gate_def              | "gate:"                        | name, children
+// escalate              | "escalate:"                    | target
+// use_block             | "use ", "$"|"@"                | entity, mod names, alias
+// project_scope         | "%"                            | name, children
+// issue                 | "issue:"                       | title, fields, children
+// thread_comment        | "comment:"                     | fields, body
+// lattice_validates_kw  | "lattice_validates:"           | body kv
+// lattice_constraint_kw | "lattice_constraint:"          | body kv
+// lattice_schema_kw     | "lattice_schema:"              | body kv
+// lattice_frontier_kw   | "lattice_frontier:"            | body kv
+// pressure_effect_kw    | "pressure_effect:"             | body kv
+// unit_cell_kw          | "unit_cell:"                   | children
+// symmetry_kw           | "symmetry:"                    | children
+// code_block            | "```", closing "```"           | lang tag, body
+// task                  | prefix?, "[...]"               | text, children
+// variable              | IDENT " = "                    | value
+// prose                 | (none)                         | entire line [CONTENT]
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// Appendix B — Parser quirks (documented, do not block merge)
+//
+// QUIRK-01: group dispatch priority
+//   "## Entity:" and "## Metric:" are checked BEFORE the general group rule
+//   (parse_line lines 115-129). The grammar represents this via ordered choice
+//   (entity_heading | metric_heading | group). Correct in PEG; not a bug.
+//
+// QUIRK-02: mod_invoke vs form:install disambiguation
+//   "form:install" falls through to mod_invoke (method="install").
+//   parse_line line 192: `form: <name>` only if NOT "form:install".
+//   Grammar: form rule has negative lookahead !("install").
+//
+// QUIRK-03: indentation-sensitive children
+//   parse_block uses absolute indent levels, not relative.
+//   The grammar cannot fully express this as PEG; conformance_test.rs
+//   validates it imperatively by re-parsing children at the correct indent.
+//
+// QUIRK-04: canonicalize_nodes lattice promotion
+//   Groups with depth=2 and specific names (Validates, Constraint, Schema,
+//   Frontier, Pressure Effect, Unit Cell, Symmetry) are promoted to lattice
+//   node types post-parse. Grammar rule `group` covers the surface syntax;
+//   the lattice-specific rules (lattice_validates_kw etc.) cover the
+//   direct-keyword surface syntax. Both map to the same AST type.
+//
+// QUIRK-05: spawn_sequential before spawn_parallel
+//   "++" must be tested before "+" to avoid consuming the first "+" of "++".
+//   Grammar uses ordered choice; the ordering in `node` reflects this.
+//
+// QUIRK-06: status_def requires "/" in line
+//   "status:..." only parses as StatusDef if "/" appears in the rest.
+//   Grammar: status_def rule requires at least one "/".
+//
+// QUIRK-07: variable = fires before prose
+//   Any line with "=" that isn't a structural keyword can be a variable.
+//   Grammar: variable rule appears before prose in `node` ordered choice.
+// ─────────────────────────────────────────────────────────────────────────────

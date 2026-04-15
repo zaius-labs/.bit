@@ -1,0 +1,18 @@
+[package]
+name = "bit-nl-core"
+version = "0.1.0"
+edition = "2021"
+description = "Probabilistic NL → .bit compiler core"
+
+[dependencies]
+bit_core = { package = "bit-lang-core", path = "../bit-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-segmentation = "1"
+regex = "1"
+
+[features]
+default = []
+
+[dev-dependencies]
+insta = "1"

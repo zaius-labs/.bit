@@ -1,0 +1,27 @@
+[package]
+name = "bit-lang-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/zaius-labs/dotbit"
+description = ".bit language parser, IR, interpreter, and toolkit"
+
+[lib]
+name = "bit_core"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

@@ -1,0 +1,15 @@
+[package]
+name = "zaius-lsp"
+version = "0.1.0"
+edition = "2021"
+description = "Zaius Semantic Language Server — NL intent classification via LSP"
+
+[[bin]]
+name = "zaius-lsp"
+path = "src/main.rs"
+
+[dependencies]
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+zaius-editor = { path = "../../packages/zaius-editor" }
+serde_json = "1"

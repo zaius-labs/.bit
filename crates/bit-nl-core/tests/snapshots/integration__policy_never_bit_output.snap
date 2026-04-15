@@ -1,0 +1,8 @@
+---
+source: crates/bit-nl-core/tests/integration.rs
+assertion_line: 669
+expression: result.bit_source
+---
+// confidence: 75%
+gate:policy
+    [!] Never allow more than 5 attempts

@@ -1,0 +1,20 @@
+{
+  "name": "bit-lang",
+  "version": "0.1.0",
+  "description": "The .bit language toolkit — parse, validate, render, and convert .bit documents",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zaius-labs/dotbit"
+  },
+  "keywords": ["bit", "parser", "language", "schema", "wasm", "bit-lang"],
+  "types": "../types/index.d.ts",
+  "main": "./bit_wasm.js",
+  "module": "./bit_wasm.js",
+  "files": [
+    "bit_wasm.js",
+    "bit_wasm_bg.wasm",
+    "bit_wasm.d.ts",
+    "../types/index.d.ts"
+  ]
+}

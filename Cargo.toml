@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/bit-core",
+    "crates/bit-store",
+    "crates/bit-cli",
+    "crates/bit-mcp",
+    "crates/bit-wasm",
+    "crates/bit-python",
+    "crates/bit-nl-core",
+    "crates/bit-nl-lsp",
+    "zaius-lsp",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/zaius-labs/dotbit"

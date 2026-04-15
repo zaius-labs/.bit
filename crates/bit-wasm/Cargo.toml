@@ -1,0 +1,17 @@
+[package]
+name = "bit-lang-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WASM bindings for the .bit language"
+
+[lib]
+name = "bit_wasm"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bit-lang-core = { version = "0.1.0", path = "../bit-core" }
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+serde_json = "1"

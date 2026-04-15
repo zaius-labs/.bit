@@ -1,0 +1,13 @@
+[package]
+name = "bit-lang-python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "bit_lang"
+crate-type = ["cdylib"]
+
+[dependencies]
+bit-lang-core = { version = "0.1.0", path = "../bit-core" }
+pyo3 = { version = "0.22", features = ["extension-module"] }
+serde_json = "1"

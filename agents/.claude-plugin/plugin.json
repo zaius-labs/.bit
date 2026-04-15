@@ -1,0 +1,20 @@
+{
+  "name": "bit-lang",
+  "version": "0.3.0",
+  "description": "Structured context for Claude Code — enforceable rules, queryable memory, persistent tasks, all powered by .bit",
+  "author": {
+    "name": "Zaius Labs",
+    "url": "https://github.com/zaius-labs"
+  },
+  "homepage": "https://github.com/zaius-labs/.bit",
+  "repository": "https://github.com/zaius-labs/.bit",
+  "license": "MIT",
+  "keywords": ["bit", "context", "memory", "tasks", "native-format"],
+  "skills": "./skills/",
+  "mcpServers": {
+    "bit-store": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/bit-mcp",
+      "args": []
+    }
+  }
+}

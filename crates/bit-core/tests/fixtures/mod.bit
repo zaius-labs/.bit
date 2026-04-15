@@ -1,0 +1,219 @@
+# Bit Core [ACTIVE]
+  id: bit-core
+  kind: TOOL
+  version: 0.1.0
+  summary: Core bit language tools, file I/O, shell, and memory
+  scope: agent
+  immutable: true
+
+## Tools:Bit
+  ### parse
+    summary: Parse .bit source text into an AST. Use this to validate .bit syntax after writing plan.bit or any .bit file. Returns the parsed structure or errors.
+    params:
+      - name: source
+        type: string
+        required: true
+        description: The .bit source text to parse. Example: '# My Plan\n    [!] First task\n    [!] Second task'
+    returns:
+      - name: result
+        type: object
+        description: Parsed AST structure or error details
+
+  ### index
+    summary: Build an index from .bit source, extracting tasks (with statuses [!]/[o]/[x]), groups, entities, and validators. Use this to check task progress and validate plan structure.
+    params:
+      - name: source
+        type: string
+        required: true
+        description: The .bit source text to index. Returns counts of pending/done tasks, group structure, entities found.
+    returns:
+      - name: result
+        type: object
+        description: Index with task counts, group structure, entities, and validators
+
+  ### render
+    summary: Render a .bit AST back to formatted .bit text. Use after parsing and modifying an AST to get clean output.
+    params:
+      - name: ast
+        type: string
+        required: true
+        description: The AST (as JSON string) to render back to .bit text
+    returns:
+      - name: result
+        type: string
+        description: Formatted .bit text
+
+  ### schemas
+    summary: Extract entity schemas from .bit source. Returns field definitions with sigils (!required, ^indexed, @timestamp, #int, ?bool, []list, {}json, ->relation).
+    params:
+      - name: source
+        type: string
+        required: true
+        description: The .bit source containing schema definitions
+    returns:
+      - name: result
+        type: object
+        description: Extracted schema field definitions with sigil annotations
+
+  ### mutate
+    summary: Apply mutations to .bit source — update task statuses, add/remove items, modify values. Use this to mark tasks as [o] in-progress or [x] complete in your plan.bit.
+    params:
+      - name: source
+        type: string
+        required: true
+        description: The .bit source text to mutate and build into a store
+    returns:
+      - name: result
+        type: object
+        description: Mutated .bit store with applied changes
+
+## Tools:Memory
+  ### remember
+    summary: Persist content to long-term memory. Use after completing tasks to remember key decisions, patterns discovered, and outcomes for future sessions.
+    params:
+      - name: content
+        type: string
+        required: true
+        description: The content to remember — decisions, patterns, outcomes
+    returns:
+      - name: result
+        type: string
+        description: Confirmation that memory was persisted
+
+  ### recall
+    summary: Retrieve relevant memories matching a query. Use at the start of a task to check for prior context or related work.
+    params:
+      - name: query
+        type: string
+        required: true
+        description: The query to search memories for
+    returns:
+      - name: result
+        type: object
+        description: Array of matching memories with relevance scores
+
+## Tools:CICD
+  ### inspect
+    summary: Inspect the workspace CI/CD configuration from .bit/cicd. Returns the pipeline, providers, policies, and runtime state.
+    params: []
+    returns:
+      - name: result
+        type: object
+        description: Workspace CI/CD configuration
+
+  ### validate
+    summary: Validate the workspace CI/CD configuration and report whether it is structurally safe to use.
+    params: []
+    returns:
+      - name: result
+        type: object
+        description: Validation result with valid flag and any errors
+
+  ### connect_provider
+    summary: Connect a CI/CD provider to the workspace and persist it under .bit/cicd/providers.json.
+    params:
+      - name: kind
+        type: string
+        required: true
+        description: Provider kind such as github_actions or local_runner
+      - name: id
+        type: string
+        required: false
+        description: Stable provider identifier. Defaults to the provider kind.
+      - name: config
+        type: object
+        required: false
+        description: Provider-specific configuration fields to persist
+    returns:
+      - name: result
+        type: object
+        description: Persisted provider plus the updated provider/state payloads
+
+  ### status
+    summary: Show the current CI/CD connection status including connected providers and last update time.
+    params: []
+    returns:
+      - name: result
+        type: object
+        description: Connection status with connected providers and timestamps
+
+## Tools:File
+  ### read
+    summary: Read the contents of a file at the given path in the workspace.
+    params:
+      - name: path
+        type: string
+        required: true
+        description: Relative path to the file to read
+    returns:
+      - name: result
+        type: string
+        description: File contents as text
+
+  ### write
+    summary: Write content to a file at the given path in the workspace. Creates directories as needed. For .bit files, always validate with $Bit.parse after writing.
+    params:
+      - name: path
+        type: string
+        required: true
+        description: Relative path to write the file
+      - name: content
+        type: string
+        required: true
+        description: The full content to write to the file
+    returns:
+      - name: result
+        type: string
+        description: Confirmation with path of written file
+
+## Tools:Mods
+  ### list
+    summary: List all available dynamic mods that can be loaded into this session.
+    params: []
+    returns:
+      - name: mods
+        type: array
+        description: Available mods with name, summary, and kind
+      - name: count
+        type: integer
+        description: Number of available mods
+
+  ### load
+    summary: Load a dynamic mod into the current session, making its tools available.
+    params:
+      - name: name
+        type: string
+        required: true
+        description: Name of the mod to load (from $Mods.list)
+    returns:
+      - name: loaded
+        type: string
+        description: Name of the loaded mod
+      - name: tools_added
+        type: integer
+        description: Number of tools now available from this mod
+
+  ### unload
+    summary: Unload a dynamic mod from the current session, removing its tools.
+    params:
+      - name: name
+        type: string
+        required: true
+        description: Name of the mod to unload
+    returns:
+      - name: unloaded
+        type: string
+        description: Name of the unloaded mod
+
+## Tools:Shell
+  ### run
+    summary: Execute a shell command in the workspace directory and return its output.
+    params:
+      - name: command
+        type: string
+        required: true
+        description: The shell command to execute
+    returns:
+      - name: result
+        type: string
+        description: Command stdout and stderr output

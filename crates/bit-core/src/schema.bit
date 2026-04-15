@@ -1,0 +1,73 @@
+# .bit Language Schema
+
+## Structure
+Lines are indented with 4 spaces. # starts a group. ## starts a subgroup.
+
+## Tasks
+Tasks use bracket status markers, indented under groups:
+    [!] Pending task (not started)
+    [o] In-progress task
+    [x] Completed task
+Labeled tasks: [A!] Design API    [B!] Build API
+Assigned tasks: [!] Fix auth :@agent    [!] Review PR :@user:alice
+
+## Key-Value Fields
+Indented under any node:
+    title: "Build the calculator"
+    priority: 1
+    status: :active
+    tags: [:backend, :api]
+
+## Entities & Schemas
+Define entity schemas with field types:
+    define:@Task
+        title: "Untitled"
+        state: :todo/:in_progress/:done
+
+    define:@Sprint
+        name string !
+        start_date timestamp
+        points int
+
+Field sigils: ! required, ^ indexed, @ timestamp, # int, ## float, ? bool, [] list, {} json, -> relation
+
+## Mutations
+Create or update entity instances:
+    mutate:@Task:build-api
+        title: "Build the API"
+        state: :in_progress
+
+## Supertags & References
+    @Task:abc123          typed entity reference
+    @abc123               bare reference
+    #urgent               tag
+    #project/backend      hierarchical tag
+
+## Flows
+Dependency graphs between labeled tasks:
+    flow:
+        A --> B
+        B --> C
+
+## Checks and Validate Suites
+Use check: for executable expectations and validate name: as a named suite
+that groups related checks. A task is not done just because files changed; it is
+done when the relevant checks pass and receipts are fresh.
+
+## Code Blocks
+    ```python
+    def hello():
+        print("hello")
+    ```
+
+## Tools Reference
+
+Bit CLI:
+- bit parse <file> — parse .bit text, returns AST or errors
+- bit index <file> — extract tasks/groups/entities, validate structure
+- bit render <file> — render AST back to .bit text
+- bit schemas <file> — extract entity schemas with field types
+- bit mutate <file> — apply mutations, build data store
+- bit validate <file> — run check/validate suites
+- bit fmt <file> — format .bit source
+- bit query <file> <expr> — query nodes by selector

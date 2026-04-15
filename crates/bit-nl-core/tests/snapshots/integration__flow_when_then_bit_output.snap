@@ -1,0 +1,7 @@
+---
+source: crates/bit-nl-core/tests/integration.rs
+assertion_line: 662
+expression: result.bit_source
+---
+flow:
+    login fails --> lock the account

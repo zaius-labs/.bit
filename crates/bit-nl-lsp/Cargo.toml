@@ -1,0 +1,21 @@
+[package]
+name = "bit-nl-lsp"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bit-nl-lsp"
+path = "src/main.rs"
+
+[dependencies]
+bit-nl-core = { path = "../bit-nl-core" }
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+lsp-types = "0.94"
+url = "2"
+dirs = "5"
+
+[dev-dependencies]
+bit-lang-core = { path = "../bit-core" }
