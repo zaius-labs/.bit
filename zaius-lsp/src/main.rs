@@ -1,8 +1,8 @@
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
-use zaius_editor::classifier_v2::ClassifierV2;
-use zaius_editor::semantic_map::{SemanticMap, SpanRole};
+use typeaway_editor::classifier_v2::ClassifierV2;
+use typeaway_editor::semantic_map::{SemanticMap, SpanRole};
 use std::sync::Mutex;
 
 struct Backend {

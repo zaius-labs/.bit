@@ -11,5 +11,5 @@ path = "src/main.rs"
 [dependencies]
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
-zaius-editor = { path = "../../packages/zaius-editor" }
+typeaway-editor = { path = "../../typeaway/editor" }
 serde_json = "1"
