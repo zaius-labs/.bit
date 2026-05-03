@@ -125,6 +125,21 @@ impl SchemaRegistry {
         match self.entities.get(entity) {
             None => errors.push(format!("Unknown entity: @{}", entity)),
             Some(schema) => {
+                // Required-field presence check. A field marked `!`
+                // in its schema definition (e.g. `title: ""!`) must
+                // appear in every mutate. Missing-required is a hard
+                // error — the data model relies on these.
+                for field_def in &schema.fields {
+                    if field_def.required
+                        && !fields.iter().any(|(name, _)| name == &field_def.name)
+                    {
+                        errors.push(format!(
+                            "Missing required field '{}' on @{}",
+                            field_def.name, entity
+                        ));
+                    }
+                }
+
                 for (field_name, value) in fields {
                     match schema.fields.iter().find(|f| f.name == *field_name) {
                         None => {
@@ -206,6 +221,7 @@ mod tests {
             name: name.to_string(),
             plural: false,
             default,
+            required: false,
         }
     }
 
@@ -307,6 +323,7 @@ mod tests {
             name: "items".to_string(),
             plural: true,
             default: FieldDefault::Str("".to_string()),
+            required: false,
         };
         let doc = Document {
             nodes: vec![make_define("Task", vec![field])], ..Default::default()
@@ -376,6 +393,81 @@ mod tests {
             .warnings
             .iter()
             .any(|w| w.contains("Type mismatch") && w.contains("invalid")));
+    }
+
+    #[test]
+    fn required_field_missing_errors() {
+        // Schema: Task has required `title`. Mutating with only
+        // `state` set must produce a hard error.
+        let mut reg = SchemaRegistry::new();
+        let doc = Document {
+            nodes: vec![make_define(
+                "Task",
+                vec![
+                    FieldDef {
+                        name: "title".to_string(),
+                        plural: false,
+                        default: FieldDefault::Str("".to_string()),
+                        required: true,
+                    },
+                    make_field("state", FieldDefault::Str("".to_string())),
+                ],
+            )],
+            ..Default::default()
+        };
+        reg.extract_from_doc(&doc);
+
+        let result =
+            reg.validate_mutation("Task", &[("state".to_string(), "\"open\"".to_string())]);
+        assert!(
+            result.errors.iter().any(|e| e.contains("Missing required field 'title'")),
+            "expected missing-required-field error, got {:?}",
+            result.errors,
+        );
+    }
+
+    #[test]
+    fn required_field_present_ok() {
+        // Same schema, but the mutation provides title — no error.
+        let mut reg = SchemaRegistry::new();
+        let doc = Document {
+            nodes: vec![make_define(
+                "Task",
+                vec![FieldDef {
+                    name: "title".to_string(),
+                    plural: false,
+                    default: FieldDefault::Str("".to_string()),
+                    required: true,
+                }],
+            )],
+            ..Default::default()
+        };
+        reg.extract_from_doc(&doc);
+
+        let result =
+            reg.validate_mutation("Task", &[("title".to_string(), "\"hi\"".to_string())]);
+        assert!(result.errors.is_empty(), "unexpected errors: {:?}", result.errors);
+    }
+
+    #[test]
+    fn parse_strips_required_marker() {
+        // Schema text uses `!` — the parser must produce a FieldDef
+        // with required=true and a clean default (no `!` baked in).
+        use crate::parse_source;
+        let doc = parse_source("define:@Task\n    title: \"\"!\n    note: \"\"\n").unwrap();
+        let define = match &doc.nodes[0] {
+            Node::Define(d) => d,
+            _ => panic!("expected Define node"),
+        };
+        let title = define.fields.iter().find(|f| f.name == "title").unwrap();
+        let note = define.fields.iter().find(|f| f.name == "note").unwrap();
+        assert!(title.required, "title should be required");
+        assert!(!note.required, "note should not be required");
+        // Default must be clean — no `!` in the string.
+        match &title.default {
+            FieldDefault::Str(s) => assert_eq!(s, "", "default should be clean empty string"),
+            other => panic!("expected Str default, got {:?}", other),
+        }
     }
 
     #[test]

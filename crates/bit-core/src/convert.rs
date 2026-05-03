@@ -102,6 +102,7 @@ fn json_object_to_define(entity: &str, value: &Value) -> Result<Node, ConvertErr
             name: k.clone(),
             plural: false,
             default,
+            required: false,
         });
     }
 
@@ -568,6 +569,7 @@ mod tests {
                     name: "name".to_string(),
                     plural: false,
                     default: FieldDefault::Str("alice".to_string()),
+                    required: false,
                 }],
                 from_scope: None,
                 mod_scope: None,

@@ -227,6 +227,11 @@ pub struct FieldDef {
     pub name: String,
     pub plural: bool,
     pub default: FieldDefault,
+    /// `true` when the schema declared the field with a trailing `!`
+    /// marker (e.g. `title: ""!`). Used by `validate_mutation` to
+    /// require the field's presence on every mutate.
+    #[serde(default)]
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

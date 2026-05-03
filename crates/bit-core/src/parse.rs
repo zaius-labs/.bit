@@ -3187,11 +3187,28 @@ fn parse_field_def(line: &str) -> Option<FieldDef> {
         (raw_name.to_string(), false)
     };
 
-    let default = parse_field_default(value);
+    // Detect and strip the trailing `!` (required) marker so the
+    // type-default parser sees a clean value. Examples:
+    //   title: ""!                       → required=true,  default=Str("")
+    //   state: :a/:b/:c!                 → required=true,  default=Enum([a,b,c])
+    //   status: :a/:b/:c                 → required=false, default=Enum([a,b,c])
+    // The `?` (optional) marker is stripped too — semantically a
+    // no-op since fields default to optional, but rejecting it
+    // would break docs that explicitly mark optionality.
+    let (value_no_marker, required) = if let Some(stripped) = value.strip_suffix('!') {
+        (stripped.trim_end(), true)
+    } else if let Some(stripped) = value.strip_suffix('?') {
+        (stripped.trim_end(), false)
+    } else {
+        (value, false)
+    };
+
+    let default = parse_field_default(value_no_marker);
     Some(FieldDef {
         name,
         plural,
         default,
+        required,
     })
 }
 

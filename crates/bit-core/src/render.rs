@@ -852,6 +852,10 @@ fn render_field_def(field: &FieldDef, out: &mut String) {
         FieldDefault::Nil => out.push_str("nil"),
         FieldDefault::Trit(t) => out.push_str(&format!("~{}", t)),
     }
+    // Emit the required marker so render(parse(src)) round-trips.
+    if field.required {
+        out.push('!');
+    }
 }
 
 fn render_flow_edge(edge: &FlowEdge, depth: usize, out: &mut String) {
@@ -1033,6 +1037,7 @@ mod tests {
                     name: "title".to_string(),
                     plural: false,
                     default: FieldDefault::Str("".to_string()),
+                    required: false,
                 }],
                 from_scope: None,
                 mod_scope: None,
@@ -1152,6 +1157,7 @@ mod tests {
                 name: "tag".to_string(),
                 plural: true,
                 default: FieldDefault::List,
+                required: false,
             },
             &mut out,
         );
@@ -1166,6 +1172,7 @@ mod tests {
                 name: "state".to_string(),
                 plural: false,
                 default: FieldDefault::Enum(vec!["todo".to_string(), "done".to_string()]),
+                required: false,
             },
             &mut out,
         );
